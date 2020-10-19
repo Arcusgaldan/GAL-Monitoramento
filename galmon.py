@@ -1,0 +1,186 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Oct 13 17:02:38 2020
+
+@author: Info
+"""
+
+
+import pandas as pd
+from datetime import timedelta
+from datetime import datetime
+import numpy as np
+
+def formataCpfCns(colunaCpf, colunaCns):
+    for index, value in colunaCpf.items():
+        if(len(str(colunaCns[index])) != 15):
+            colunaCns[index] = None
+        if(pd.isnull(value)):
+            colunaCpf[index] = None
+            continue
+        value = value.strip()
+        value = value.replace(".", "")
+        value = value.replace("-", "")
+        while len(value) < 11:
+            value = "0" + value
+        colunaCpf[index] = str(value)
+        # if(len(colunaCpf[index]) < 14):
+        #     colunaCpf[index] = value[:3] + '.' + value[3:6] + "." + value[6:9] + "-" + value[9:]
+    return colunaCpf, colunaCns
+
+def acharId(Cpf, Cns, tabela):
+    #print("TESTE - DN param " + str(Dn) + "\nPrimeira data da tabela: " + str(tabela['Data Nasc.'][0]))    
+    #print("Entrei em acharId, meu tipo do CNS é ")
+    #print(type(Cns))
+    if(Cpf is not None):
+        filtro1 = tabela['CPF'] == Cpf.strip()
+    else:
+        filtro1 = False
+        
+    if(Cns is not None):
+        filtro2 = tabela['CNS'] == Cns.strip()
+    else:
+        filtro2 = False
+    
+    if Cpf is None and Cns is None:        
+        return None
+    else:        
+        teste = tabela.where(filtro1 | filtro2)
+        return teste
+
+def limpaAcentosAssessor(tabela): #Função que limpa os caracteres especiais da tabela do Assessor
+    tabela.replace(to_replace={"Á": "A", "á": "A", "Â": "A", "â": "A", "Ã": "A", "ã": "A",
+                               "É": "E", "é": "E", "Ê": "E", "ê": "E",
+                               "Í": "I", "í": "I", "Î": "I", "î": "I",
+                               "Ó": "O", "ó": "O", "Ô": "O", "ô": "O", "Õ": "O", "õ": "O",
+                               "Ú": "U", "ú": "U", "Û": "U", "û": "U",
+                               "Ç": "C", "ç": "C"}, inplace=True, regex=True)
+    tabela.rename(columns={"Cód. Paciente": "COd. Paciente", "Data da Notificação": "Data da NotificaCAo", "Situação": "SituaCAo"}, inplace=True)    
+    return tabela
+
+def limpaAcentosGal(tabela): #Função que limpa os caracteres especiais da tabela do GAL
+    tabela.replace(to_replace={"Á": "A", "á": "A", "Â": "A", "â": "A", "Ã": "A", "ã": "A",
+                               "É": "E", "é": "E", "Ê": "E", "ê": "E",
+                               "Í": "I", "í": "I", "Î": "I", "î": "I",
+                               "Ó": "O", "ó": "O", "Ô": "O", "ô": "O", "Õ": "O", "õ": "O",
+                               "Ú": "U", "ú": "U", "Û": "U", "û": "U",
+                               "Ç": "C", "ç": "C"}, inplace=True, regex=True)
+    tabela.rename(columns={"Requisição": "RequisiCAo", "Mun. Residência": "Mun. ResidEncia", "Coronavírus SARS-CoV2": "CoronavIrus SARS-CoV2"}, inplace=True)    
+    return tabela
+
+def limpaEspacosGal(tabela): #Função que limpa os espaços desnecessários da tabela do GAL
+    colunas = ['Metodo', 'Resultado', "CoronavIrus SARS-CoV2"]
+    for coluna in colunas:
+        tabela[coluna] = tabela[coluna].str.strip()
+    
+    return tabela
+
+def appendTabelaAuxiliar(tabela, row, motivo):
+    aux = {"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Mun. Residencia": row[paramColunaMunResGal]}
+    if motivo is not None:
+        aux['Motivo'] = motivo
+    tabela.append(aux)
+    
+
+#TODO: Tirar a parte da hora da data atual para poder voltar o paramDiasAtras para 15
+paramDiasAtras = 16 #Parâmetro que define quantos dias atrás ele considera na planilha de suspeitos e monitoramento (ex: notificações de até X dias atrás serão analisadas, antes disso serão ignoradas)
+paramDiasNovaInfeccao = 14
+paramDataAtual = datetime.today() #Parâmetro que define qual é a data atual para o script fazer a comparacao dos dias para trás (padrão: datetime.today() = data atual do sistema)
+
+paramColunaDataCadGal = 18
+paramColunaMunResGal = 7
+paramColunaDataNotifAssessor = 11
+
+tabelaTotalGal = pd.read_excel("lista total gal.xlsx", dtype={'CPF': np.unicode_, 'CNS': np.unicode_, 'Requisição': np.unicode_}).sort_values(by="Dt. Cadastro", ignore_index=True) #Lista total das notificações do GAL
+tabelaTotalGal['CPF'], tabelaTotalGal['CNS'] = formataCpfCns(tabelaTotalGal['CPF'], tabelaTotalGal['CNS'])
+tabelaTotalGal = limpaAcentosGal(tabelaTotalGal)
+tabelaTotalGal = limpaEspacosGal(tabelaTotalGal)
+
+filtroSemResultado1 = tabelaTotalGal['Status Exame'] == 'Resultado Liberado'
+filtroSemResultado2 = tabelaTotalGal['Resultado'] == ''
+filtroSemResultado3 = tabelaTotalGal['CoronavIrus SARS-CoV2'] == ''
+
+tabelaGalSemResultado = tabelaTotalGal.where(filtroSemResultado1 & filtroSemResultado2 & filtroSemResultado3).dropna(how='all')
+
+tabelaGalPositivos = tabelaTotalGal.where(tabelaTotalGal['Resultado'] == 'DetectAvel').dropna(how='all')
+
+tabelaGalRecentes = tabelaTotalGal.where(tabelaTotalGal['Dt. Cadastro'] >= paramDataAtual - timedelta(days=paramDiasAtras)).dropna(how='all')
+
+tabelaGalNegativos = tabelaGalRecentes.where(tabelaGalRecentes['Resultado'] == 'NAo DetectAvel').dropna(how='all')
+
+tabelaGalNaoRealizados = tabelaGalRecentes.where(tabelaGalRecentes['Status Exame'] == 'Exame nAo-realizado').dropna(how='all')
+
+filtroSuspeito1 = tabelaGalRecentes['Status Exame'] != 'Resultado Liberado'
+filtroSuspeito2 = tabelaGalRecentes['Status Exame'] != 'Exame nAo-realizado'
+
+tabelaGalSuspeitos = tabelaGalRecentes.where(filtroSuspeito1 & filtroSuspeito2).dropna(how='all')
+
+tabelaTotalAssessor = pd.read_excel("lista total assessor.xls", dtype={'CPF': np.unicode_, 'CNS': np.unicode_}).sort_values(by=["Cód. Paciente", "Data da Notificação"]) #Lê a tabela do Assessor e classifica por ID do paciente e Data da Notificação
+tabelaTotalAssessor['CPF'], tabelaTotalAssessor['CNS'] = formataCpfCns(tabelaTotalAssessor['CPF'], tabelaTotalAssessor['CNS']) #Formata as colunas de CPF e CNS baseado na regra de negócio
+tabelaTotalAssessor = limpaAcentosAssessor(tabelaTotalAssessor) #Limpa acentos e 'ç' da tabela do Assessor
+
+tabelaGalPositivosFalso = []
+tabelaGalNegativosFalso = []
+tabelaGalSuspeitosFalso = []
+tabelaGalNaoRealizadosFalso = []
+tabelaGalInconsistencias = []
+baseRepeticaoSemId = []
+
+for row in tabelaGalPositivos.itertuples():
+    notifAssessor = acharId(row.CPF, row.CNS, tabelaTotalAssessor)
+    if(notifAssessor is None):
+        #baseRepeticaoSemId.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante})
+        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo")
+        continue
+    elif notifAssessor.empty:
+        if(row[paramColunaMunResGal] == "BARRETOS"):
+            appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Barretense positivo sem nenhum agravo")
+        continue
+    if "CONFIRMADO" in notifAssessor["SituaCAo"].values:
+        positivosAssessor = notifAssessor.where(notifAssessor['SituaCAo'] == 'CONFIRMADO').dropna(how='all')
+        for rowPositivo in positivosAssessor.itertuples():
+            flagIsWrong = False
+            dataCadGal = row[paramColunaDataCadGal]
+            dataNotifAssessor = rowPositivo[paramColunaDataNotifAssessor]
+            if dataNotifAssessor >= dataCadGal - timedelta(days=paramDiasNovaInfeccao):
+                flagIsWrong = True
+                break
+        if flagIsWrong:
+            #tabelaGalPositivosFalso.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Motivo": "Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias"})
+            appendTabelaAuxiliar(tabelaGalPositivosFalso, row, "Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias")
+            tabelaGalPositivos.drop(row.Index, inplace=True)
+            continue
+    if not "SUSPEITA" in notifAssessor["SituaCAo"].values:
+        #tabelaGalInconsistencias.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Motivo": "Nao tem Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias nem Suspeita no Assessor"})
+        appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Nao tem Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias nem Suspeita no Assessor")
+        
+for row in tabelaGalNegativos.itertuples():
+    notifAssessor = acharId(row.CPF, row.CNS, tabelaTotalAssessor)
+    if(notifAssessor is None):
+        #baseRepeticaoSemId.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante})
+        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo")
+        continue
+    elif notifAssessor.empty:
+        if(row[paramColunaMunResGal] == "BARRETOS"):
+            appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Barretense negativo sem nenhum agravo")
+        appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Negativo sem notificacoes no Assessor")
+        tabelaGalNegativos.drop(row.Index, inplace=True)
+        continue
+    if "NEGATIVO" in notifAssessor['SituaCAo'].values:
+        negativosAssessor = notifAssessor.where(notifAssessor['SituaCAo'] == 'NEGATIVO').dropna(how='all')
+        for rowNegativo in negativosAssessor.itertuples():
+            flagIsWrong = False
+            dataCadGal = row[paramColunaDataCadGal]
+            dataNotifAssessor = rowNegativo[paramColunaDataNotifAssessor]
+            if dataNotifAssessor >= dataCadGal - timedelta(days=paramDiasNovaInfeccao):
+                flagIsWrong = True
+                break
+        if flagIsWrong:
+            #tabelaGalPositivosFalso.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Motivo": "Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias"})
+            appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Negativo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias")
+            tabelaGalNegativos.drop(row.Index, inplace=True)
+            continue
+    if not "SUSPEITA" in notifAssessor["SituaCAo"].values:
+        appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Nao tem Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias nem Suspeita no Assessor")
+        appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Negativo no GAL sem negativo equivalente no Assessor nem suspeita em aberto")
+        tabelaGalNegativos.drop(row.Index, inplace=True)
