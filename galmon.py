@@ -31,7 +31,10 @@ def formataCpfCns(colunaCpf, colunaCns):
 def acharId(Cpf, Cns, tabela):
     #print("TESTE - DN param " + str(Dn) + "\nPrimeira data da tabela: " + str(tabela['Data Nasc.'][0]))    
     #print("Entrei em acharId, meu tipo do CNS é ")
-    #print(type(Cns))
+    #print(type(Cns))   
+    if Cpf is None and Cns is None:        
+        return None
+    
     if(Cpf is not None):
         filtro1 = tabela['CPF'] == Cpf.strip()
     else:
@@ -41,12 +44,9 @@ def acharId(Cpf, Cns, tabela):
         filtro2 = tabela['CNS'] == Cns.strip()
     else:
         filtro2 = False
-    
-    if Cpf is None and Cns is None:        
-        return None
-    else:        
-        teste = tabela.where(filtro1 | filtro2)
-        return teste
+        
+    teste = tabela.where(filtro1 | filtro2)
+    return teste   
 
 def limpaAcentosAssessor(tabela): #Função que limpa os caracteres especiais da tabela do Assessor
     tabela.replace(to_replace={"Á": "A", "á": "A", "Â": "A", "â": "A", "Ã": "A", "ã": "A",
@@ -84,7 +84,9 @@ def appendTabelaAuxiliar(tabela, row, motivo):
 
 #TODO: Tirar a parte da hora da data atual para poder voltar o paramDiasAtras para 15
 paramDiasAtras = 16 #Parâmetro que define quantos dias atrás ele considera na planilha de suspeitos e monitoramento (ex: notificações de até X dias atrás serão analisadas, antes disso serão ignoradas)
-paramDiasNovaInfeccao = 14
+paramDiasNovaInfeccao = 14 #Parâmetro que define até quantos dias de diferença de outro agravo essa notificação pode ter para ser considerada a mesma infecção
+paramDiasAnulaSuspeito = 5 #Parâmetro que define a quantos dias pode haver outra notificação com resultado para anular uma notificação suspeita nova
+paramDiasDentroMonitoramento = 15 #Parâmetro que define até quantos dias atrás o paciente é considerado pelo monitoramento
 paramDataAtual = datetime.today() #Parâmetro que define qual é a data atual para o script fazer a comparacao dos dias para trás (padrão: datetime.today() = data atual do sistema)
 
 paramColunaDataCadGal = 18
@@ -102,11 +104,17 @@ filtroSemResultado3 = tabelaTotalGal['CoronavIrus SARS-CoV2'] == ''
 
 tabelaGalSemResultado = tabelaTotalGal.where(filtroSemResultado1 & filtroSemResultado2 & filtroSemResultado3).dropna(how='all')
 
-tabelaGalPositivos = tabelaTotalGal.where(tabelaTotalGal['Resultado'] == 'DetectAvel').dropna(how='all')
+filtroPositivo1 = tabelaTotalGal['Resultado'] == 'DetectAvel'
+filtroPositivo2 = tabelaTotalGal['CoronavIrus SARS-CoV2'] == 'DetectAvel'
+
+tabelaGalPositivos = tabelaTotalGal.where(filtroPositivo1 | filtroPositivo2).dropna(how='all')
 
 tabelaGalRecentes = tabelaTotalGal.where(tabelaTotalGal['Dt. Cadastro'] >= paramDataAtual - timedelta(days=paramDiasAtras)).dropna(how='all')
 
-tabelaGalNegativos = tabelaGalRecentes.where(tabelaGalRecentes['Resultado'] == 'NAo DetectAvel').dropna(how='all')
+filtroNegativo1 = tabelaGalRecentes['Resultado'] == 'NAo DetectAvel'
+filtroNegativo2 = tabelaGalRecentes['CoronavIrus SARS-CoV2'] == 'NAo DetectAvel'
+
+tabelaGalNegativos = tabelaGalRecentes.where(filtroNegativo1 | filtroNegativo2).dropna(how='all')
 
 tabelaGalNaoRealizados = tabelaGalRecentes.where(tabelaGalRecentes['Status Exame'] == 'Exame nAo-realizado').dropna(how='all')
 
@@ -184,3 +192,26 @@ for row in tabelaGalNegativos.itertuples():
         appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Nao tem Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias nem Suspeita no Assessor")
         appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Negativo no GAL sem negativo equivalente no Assessor nem suspeita em aberto")
         tabelaGalNegativos.drop(row.Index, inplace=True)
+        
+for row in tabelaGalSuspeitos.itertuples():
+    notifAssessor = acharId(row.CPF, row.CNS, tabelaTotalAssessor)
+    if(notifAssessor is None):
+        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito")
+        continue
+    if "SUSPEITA" in notifAssessor["SituaCAo"].values:
+        #TODO: Ver se precisa verificar a quantidade de dias da suspeita pra inserir novamente ou não (por fins de monitoramento)
+        appendTabelaAuxiliar(tabelaGalSuspeitosFalso, row, "Ja existe suspeita em aberto")
+        tabelaGalSuspeitos.drop(row.Index, inplace=True)
+        
+for row in tabelaGalNaoRealizados.itertuples():
+    notifGal = acharId(row.CPF, row.CNS, tabelaGalRecentes)
+    if notifGal is None:
+        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado")
+        continue
+    for rowGal in notifGal.itertuples():
+        if row.RequisiCAo == rowGal.RequisiCAo:
+            continue
+        if(rowGal[paramColunaDataCadGal] > row[paramColunaDataCadGal]):
+            appendTabelaAuxiliar(tabelaGalNaoRealizadosFalso, row, "Foi feito um exame posterior a esse")
+            tabelaGalNaoRealizados.drop(row.Index, inplace=True)
+            break
