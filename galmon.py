@@ -10,6 +10,7 @@ import pandas as pd
 from datetime import timedelta
 from datetime import datetime
 import numpy as np
+import os
 
 def formataCpfCns(colunaCpf, colunaCns):
     for index, value in colunaCpf.items():
@@ -76,10 +77,17 @@ def limpaEspacosGal(tabela): #Função que limpa os espaços desnecessários da 
     return tabela
 
 def appendTabelaAuxiliar(tabela, row, motivo):
-    aux = {"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Mun. Residencia": row[paramColunaMunResGal]}
+    aux = {"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Mun. Residencia": row[paramColunaMunResGal], "Resultado": row.Resultado, "CoronavIrus SARS-CoV2": row[paramColunaCoronavirusGal]}
     if motivo is not None:
         aux['Motivo'] = motivo
     tabela.append(aux)
+    
+def confereRepeticaoSemId(base, row):
+    if base is None:
+        return False
+    if row.requisiCAo in base["RequisiCAo"].values:
+        return True
+    return False
     
 
 #TODO: Tirar a parte da hora da data atual para poder voltar o paramDiasAtras para 15
@@ -92,6 +100,7 @@ paramDataAtual = datetime.today() #Parâmetro que define qual é a data atual pa
 paramColunaDataCadGal = 18
 paramColunaMunResGal = 7
 paramColunaDataNotifAssessor = 11
+paramColunaCoronavirusGal = 25
 
 tabelaTotalGal = pd.read_excel("lista total gal.xlsx", dtype={'CPF': np.unicode_, 'CNS': np.unicode_, 'Requisição': np.unicode_}).sort_values(by="Dt. Cadastro", ignore_index=True) #Lista total das notificações do GAL
 tabelaTotalGal['CPF'], tabelaTotalGal['CNS'] = formataCpfCns(tabelaTotalGal['CPF'], tabelaTotalGal['CNS'])
@@ -127,6 +136,11 @@ tabelaTotalAssessor = pd.read_excel("lista total assessor.xls", dtype={'CPF': np
 tabelaTotalAssessor['CPF'], tabelaTotalAssessor['CNS'] = formataCpfCns(tabelaTotalAssessor['CPF'], tabelaTotalAssessor['CNS']) #Formata as colunas de CPF e CNS baseado na regra de negócio
 tabelaTotalAssessor = limpaAcentosAssessor(tabelaTotalAssessor) #Limpa acentos e 'ç' da tabela do Assessor
 
+if(os.path.isfile('base repeticao sem dados.xlsx')):
+    tabelaRepeticaoSemDados = pd.read_excel('base repeticao sem dados.xlsx')
+else:
+    tabelaRepeticaoSemDados = None
+
 tabelaGalPositivosFalso = []
 tabelaGalNegativosFalso = []
 tabelaGalSuspeitosFalso = []
@@ -138,7 +152,11 @@ for row in tabelaGalPositivos.itertuples():
     notifAssessor = acharId(row.CPF, row.CNS, tabelaTotalAssessor)
     if(notifAssessor is None):
         #baseRepeticaoSemId.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante})
-        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo")
+        if(confereRepeticaoSemId(tabelaRepeticaoSemDados, row)):
+            appendTabelaAuxiliar(tabelaGalPositivosFalso, row, "Sem dados já inserido anteriormente")
+            tabelaGalPositivos.drop(row.Index, inplace=True)
+        else:
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo")
         continue
     elif notifAssessor.empty:
         if(row[paramColunaMunResGal] == "BARRETOS"):
@@ -166,7 +184,11 @@ for row in tabelaGalNegativos.itertuples():
     notifAssessor = acharId(row.CPF, row.CNS, tabelaTotalAssessor)
     if(notifAssessor is None):
         #baseRepeticaoSemId.append({"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante})
-        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo")
+        if(confereRepeticaoSemId(tabelaRepeticaoSemDados, row)):
+            appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Sem dados já inserido anteriormente")
+            tabelaGalNegativos.drop(row.Index, inplace=True)
+        else:
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo")
         continue
     elif notifAssessor.empty:
         if(row[paramColunaMunResGal] == "BARRETOS"):
@@ -196,7 +218,11 @@ for row in tabelaGalNegativos.itertuples():
 for row in tabelaGalSuspeitos.itertuples():
     notifAssessor = acharId(row.CPF, row.CNS, tabelaTotalAssessor)
     if(notifAssessor is None):
-        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito")
+        if confereRepeticaoSemId(tabelaRepeticaoSemDados, row):
+            appendTabelaAuxiliar(tabelaGalSuspeitosFalso, row, "Sem dados já inserido anteriormente")
+            tabelaGalSuspeitos.drop(row.Index, inplace=True)
+        else:
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito")
         continue
     if "SUSPEITA" in notifAssessor["SituaCAo"].values:
         #TODO: Ver se precisa verificar a quantidade de dias da suspeita pra inserir novamente ou não (por fins de monitoramento)
@@ -206,7 +232,11 @@ for row in tabelaGalSuspeitos.itertuples():
 for row in tabelaGalNaoRealizados.itertuples():
     notifGal = acharId(row.CPF, row.CNS, tabelaGalRecentes)
     if notifGal is None:
-        appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado")
+        if confereRepeticaoSemId(tabelaRepeticaoSemDados, row):
+            appendTabelaAuxiliar(tabelaGalNaoRealizadosFalso, row, "Sem dados já inserido anteriormente")
+            tabelaGalNaoRealizados.drop(row.Index, inplace=True)
+        else:
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado")
         continue
     for rowGal in notifGal.itertuples():
         if row.RequisiCAo == rowGal.RequisiCAo:
@@ -215,3 +245,31 @@ for row in tabelaGalNaoRealizados.itertuples():
             appendTabelaAuxiliar(tabelaGalNaoRealizadosFalso, row, "Foi feito um exame posterior a esse")
             tabelaGalNaoRealizados.drop(row.Index, inplace=True)
             break
+
+baseRepeticaoSemId = pd.DataFrame(baseRepeticaoSemId)
+if tabelaRepeticaoSemDados is None:
+    baseRepeticaoSemId.to_excel("base repeticao sem dados.xlsx")
+else:
+    tabelaRepeticaoSemDados = tabelaRepeticaoSemDados.append(baseRepeticaoSemId, ignore_index=True)
+    tabelaRepeticaoSemDados.to_excel("base repeticao sem dados.xlsx")
+    
+with pd.ExcelWriter('Gal Monitoramento ' + paramDataAtual.strftime("%d.%m") + '.xlsx') as writerGalCorreto:
+    tabelaGalPositivos.to_excel(writerGalCorreto, "Positivos")
+    tabelaGalNegativos.to_excel(writerGalCorreto, "Negativos")
+    tabelaGalSuspeitos.to_excel(writerGalCorreto, "Suspeitos")
+    tabelaGalNaoRealizados.to_excel(writerGalCorreto, "Não Realizados")
+    
+with pd.ExcelWriter('Gal Monitoramento INCORRETO ' + paramDataAtual.strftime("%d.%m") + '.xlsx') as writerGalIncorreto:
+    tabelaGalPositivosFalso = pd.DataFrame(tabelaGalPositivosFalso)
+    tabelaGalNegativosFalso = pd.DataFrame(tabelaGalNegativosFalso)
+    tabelaGalSuspeitosFalso = pd.DataFrame(tabelaGalSuspeitosFalso)
+    tabelaGalNaoRealizadosFalso = pd.DataFrame(tabelaGalNaoRealizadosFalso)
+    
+    tabelaGalPositivosFalso.to_excel(writerGalIncorreto, "Positivos")
+    tabelaGalNegativosFalso.to_excel(writerGalIncorreto, "Negativos")
+    tabelaGalSuspeitosFalso.to_excel(writerGalIncorreto, "Suspeitos")
+    tabelaGalNaoRealizadosFalso.to_excel(writerGalIncorreto, "Não Realizados")
+    
+tabelaGalInconsistencias = pd.DataFrame(tabelaGalInconsistencias)
+tabelaGalInconsistencias.to_excel("Gal Inconsistências " + paramDataAtual.strftime("%d.%m") + '.xlsx')
+    
