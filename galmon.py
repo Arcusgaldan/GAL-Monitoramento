@@ -85,7 +85,7 @@ def appendTabelaAuxiliar(tabela, row, motivo):
 def confereRepeticaoSemId(base, row):
     if base is None:
         return False
-    if row.requisiCAo in base["RequisiCAo"].values:
+    if row.RequisiCAo in base["Requisicao"].values:
         return True
     return False
     
