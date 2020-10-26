@@ -139,7 +139,7 @@ tabelaTotalAssessor['CPF'], tabelaTotalAssessor['CNS'] = formataCpfCns(tabelaTot
 tabelaTotalAssessor = limpaAcentosAssessor(tabelaTotalAssessor) #Limpa acentos e 'ç' da tabela do Assessor
 
 if(os.path.isfile('base repeticao sem dados.xlsx')):
-    tabelaRepeticaoSemDados = pd.read_excel('base repeticao sem dados.xlsx')
+    tabelaRepeticaoSemDados = pd.read_excel('base repeticao sem dados.xlsx', dtype={'Requisicao': np.unicode_})
 else:
     tabelaRepeticaoSemDados = None
 
@@ -181,8 +181,8 @@ for row in tabelaGalPositivos.itertuples():
             dataCadGal = row[paramColunaDataCadGal]
             dataNotifAssessor = rowPositivo[paramColunaDataNotifAssessor]
             dataLibGal = row[paramColunaDataLibGal]
-            dataResultAssessor = row[paramColunaDataResultAssessor]
-            if (dataNotifAssessor >= dataCadGal - timedelta(days=paramDiasNovaInfeccao) or datResultAssessor >= dataLibGal - timedelta(days=paramDiasNovaInfeccao)):
+            dataResultAssessor = rowPositivo[paramColunaDataResultAssessor]
+            if (dataNotifAssessor >= dataCadGal - timedelta(days=paramDiasNovaInfeccao)) or (dataResultAssessor >= dataLibGal - timedelta(days=paramDiasNovaInfeccao)):
                 flagIsWrong = True
                 break
         if flagIsWrong:
