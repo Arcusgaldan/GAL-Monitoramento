@@ -46,7 +46,7 @@ def acharId(Cpf, Cns, tabela):
     else:
         filtro2 = False
         
-    teste = tabela.where(filtro1 | filtro2)
+    teste = tabela.where(filtro1 | filtro2).dropna(how='all')
     return teste   
 
 def limpaAcentosAssessor(tabela): #Função que limpa os caracteres especiais da tabela do Assessor
@@ -76,10 +76,12 @@ def limpaEspacosGal(tabela): #Função que limpa os espaços desnecessários da 
     
     return tabela
 
-def appendTabelaAuxiliar(tabela, row, motivo):
-    aux = {"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Requisitante": row.Requisitante, "Mun. Residencia": row[paramColunaMunResGal], "Resultado": row.Resultado, "CoronavIrus SARS-CoV2": row[paramColunaCoronavirusGal]}
+def appendTabelaAuxiliar(tabela, row, motivo, timestamp=False):
+    aux = {"Requisicao": row.RequisiCAo, "Paciente": row.Paciente, "CNS": row.CNS, "CPF": row.CPF, "Data de Cadastro": row[paramColunaDataCadGal], "Requisitante": row.Requisitante, "Mun. Residencia": row[paramColunaMunResGal], "Resultado": row.Resultado, "CoronavIrus SARS-CoV2": row[paramColunaCoronavirusGal]}
     if motivo is not None:
         aux['Motivo'] = motivo
+    if timestamp:
+        aux['Data de Insercao'] = paramDataAtual
     tabela.append(aux)
     
 def confereRepeticaoSemId(base, row):
@@ -103,6 +105,7 @@ paramColunaDataNotifAssessor = 11
 paramColunaCoronavirusGal = 25
 paramColunaDataLibGal = 20
 paramColunaDataResultAssessor = 13
+paramColunaStatusGal = 23
 
 tabelaTotalGal = pd.read_excel("lista total gal.xlsx", dtype={'CPF': np.unicode_, 'CNS': np.unicode_, 'Requisição': np.unicode_}).sort_values(by="Dt. Cadastro", ignore_index=True) #Lista total das notificações do GAL
 tabelaTotalGal['CPF'], tabelaTotalGal['CNS'] = formataCpfCns(tabelaTotalGal['CPF'], tabelaTotalGal['CNS'])
@@ -158,7 +161,7 @@ for row in tabelaGalPositivos.itertuples():
             appendTabelaAuxiliar(tabelaGalPositivosFalso, row, "Sem dados já inserido anteriormente")
             tabelaGalPositivos.drop(row.Index, inplace=True)
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo", timestamp=True)
         continue
     
     if(row.CPF is None and row.CNS is not None and row.CNS[0] != '7'): #Verifica se tem apenas CNS e não é início 7 pra jogar pra base de repetição
@@ -167,9 +170,10 @@ for row in tabelaGalPositivos.itertuples():
             tabelaGalPositivos.drop(row.Index, inplace=True)
             continue
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Positivo", timestamp=True)
     
     if notifAssessor.empty:
+        #print("Positivo sem nada no Assessor, mun. res = " + row[paramColunaMunResGal])
         if(row[paramColunaMunResGal] == "BARRETOS"):
             appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Barretense positivo sem nenhum agravo")
         continue
@@ -202,7 +206,7 @@ for row in tabelaGalNegativos.itertuples():
             appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Sem dados já inserido anteriormente")
             tabelaGalNegativos.drop(row.Index, inplace=True)
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo", timestamp=True)
         continue
     
     if(row.CPF is None and row.CNS is not None and row.CNS[0] != '7'): #Verifica se tem apenas CNS e não é início 7 pra jogar pra base de repetição
@@ -211,7 +215,7 @@ for row in tabelaGalNegativos.itertuples():
             tabelaGalNegativos.drop(row.Index, inplace=True)
             continue
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Negativo", timestamp=True)
     
     if notifAssessor.empty:
         if(row[paramColunaMunResGal] == "BARRETOS"):
@@ -246,7 +250,7 @@ for row in tabelaGalSuspeitos.itertuples():
             appendTabelaAuxiliar(tabelaGalSuspeitosFalso, row, "Sem dados já inserido anteriormente")
             tabelaGalSuspeitos.drop(row.Index, inplace=True)
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito", timestamp=True)
         continue
     
     if(row.CPF is None and row.CNS is not None and row.CNS[0] != '7'): #Verifica se tem apenas CNS e não é início 7 pra jogar pra base de repetição
@@ -255,7 +259,7 @@ for row in tabelaGalSuspeitos.itertuples():
             tabelaGalSuspeitos.drop(row.Index, inplace=True)
             continue
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Suspeito", timestamp=True)
     
     if "SUSPEITA" in notifAssessor["SituaCAo"].values:
         #TODO: Ver se precisa verificar a quantidade de dias da suspeita pra inserir novamente ou não (por fins de monitoramento)
@@ -269,7 +273,7 @@ for row in tabelaGalNaoRealizados.itertuples():
             appendTabelaAuxiliar(tabelaGalNaoRealizadosFalso, row, "Sem dados já inserido anteriormente")
             tabelaGalNaoRealizados.drop(row.Index, inplace=True)
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado", timestamp=True)
         continue
     
     if(row.CPF is None and row.CNS is not None and row.CNS[0] != '7'): #Verifica se tem apenas CNS e não é início 7 pra jogar pra base de repetição
@@ -278,12 +282,10 @@ for row in tabelaGalNaoRealizados.itertuples():
             tabelaGalNaoRealizados.drop(row.Index, inplace=True)
             continue
         else:
-            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado")
+            appendTabelaAuxiliar(baseRepeticaoSemId, row, "Nao realizado", timestamp=True)
             
     for rowGal in notifGal.itertuples():
-        if row.RequisiCAo == rowGal.RequisiCAo:
-            continue
-        if(rowGal[paramColunaDataCadGal] > row[paramColunaDataCadGal]):
+        if(rowGal[paramColunaDataCadGal] >= row[paramColunaDataCadGal] and rowGal[paramColunaStatusGal] != "Exame nAo-realizado"):
             appendTabelaAuxiliar(tabelaGalNaoRealizadosFalso, row, "Foi feito um exame posterior a esse")
             tabelaGalNaoRealizados.drop(row.Index, inplace=True)
             break
