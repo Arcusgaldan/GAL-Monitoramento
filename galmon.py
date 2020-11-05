@@ -241,7 +241,7 @@ for row in tabelaGalNegativos.itertuples():
             tabelaGalNegativos.drop(row.Index, inplace=True)
             continue
     if not "SUSPEITA" in notifAssessor["SituaCAo"].values:
-        appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Nao tem Positivo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias nem Suspeita no Assessor")
+        appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Nao tem Negativo dentro do periodo de " + str(paramDiasNovaInfeccao) + " dias nem Suspeita no Assessor")
         appendTabelaAuxiliar(tabelaGalNegativosFalso, row, "Negativo no GAL sem negativo equivalente no Assessor nem suspeita em aberto")
         tabelaGalNegativos.drop(row.Index, inplace=True)
         
