@@ -84,11 +84,27 @@ def appendTabelaAuxiliar(tabela, row, motivo, timestamp=False):
         aux['Data de Insercao'] = paramDataAtual
     tabela.append(aux)
     
+def getTipoReq(row):
+    if(row[paramColunaResultadoGal] == "DetectAvel" or row[paramColunaCoronavirusGal] == "DetectAvel"):
+        return "Positivo"
+    elif(row[paramColunaResultadoGal] == "NAo DetectAvel" or row[paramColunaCoronavirusGal] == "NAo DetectAvel"):
+        return "Negativo"
+    elif(row[paramColunaStatusGal] != 'Resultado Liberado' and row[paramColunaStatusGal] != 'Exame nAo-realizado'):
+        return "Suspeito"
+    else:
+        return "Nao realizado"
+    
 def confereRepeticaoSemId(base, row):
     if base is None:
         return False
     if row.RequisiCAo in base["Requisicao"].values:
-        return True
+        reqs = base[base["Requisicao"] == row.RequisiCAo]
+        global teste
+        teste = reqs
+        if getTipoReq(row) in reqs["Motivo"].values:
+            return True
+        else:
+            return False
     return False
     
 
@@ -104,6 +120,7 @@ paramColunaDataCadGal = 18
 paramColunaMunResGal = 7
 paramColunaDataNotifAssessor = 11
 paramColunaCoronavirusGal = 25
+paramColunaResultadoGal = 24
 paramColunaDataLibGal = 20
 paramColunaDataResultAssessor = 13
 paramColunaStatusGal = 23
@@ -145,6 +162,8 @@ tabelaTotalAssessor = limpaAcentosAssessor(tabelaTotalAssessor) #Limpa acentos e
 
 if(os.path.isfile('base repeticao sem dados.xlsx')):
     tabelaRepeticaoSemDados = pd.read_excel('base repeticao sem dados.xlsx', dtype={'Requisicao': np.unicode_})
+    tabelaRepeticaoSemDados.drop(columns='Unnamed: 0', inplace=True)
+    
 else:
     tabelaRepeticaoSemDados = None
 
