@@ -97,6 +97,7 @@ paramDiasAtras = 16 #Parâmetro que define quantos dias atrás ele considera na 
 paramDiasNovaInfeccao = 14 #Parâmetro que define até quantos dias de diferença de outro agravo essa notificação pode ter para ser considerada a mesma infecção
 paramDiasAnulaSuspeito = 5 #Parâmetro que define a quantos dias pode haver outra notificação com resultado para anular uma notificação suspeita nova
 paramDiasDentroMonitoramento = 15 #Parâmetro que define até quantos dias atrás o paciente é considerado pelo monitoramento
+paramDiasOutroCid = 6 #Parâmetro que define até quantos dias um agravo de outro CID é considerado pertinente para aquele exame no GAL
 paramDataAtual = datetime.today() #Parâmetro que define qual é a data atual para o script fazer a comparacao dos dias para trás (padrão: datetime.today() = data atual do sistema)
 
 paramColunaDataCadGal = 18
@@ -106,6 +107,7 @@ paramColunaCoronavirusGal = 25
 paramColunaDataLibGal = 20
 paramColunaDataResultAssessor = 13
 paramColunaStatusGal = 23
+paramColunaCidAssessor = 8
 
 tabelaTotalGal = pd.read_excel("lista total gal.xlsx", dtype={'CPF': np.unicode_, 'CNS': np.unicode_, 'Requisição': np.unicode_}).sort_values(by="Dt. Cadastro", ignore_index=True) #Lista total das notificações do GAL
 tabelaTotalGal['CPF'], tabelaTotalGal['CNS'] = formataCpfCns(tabelaTotalGal['CPF'], tabelaTotalGal['CNS'])
@@ -289,6 +291,50 @@ for row in tabelaGalNaoRealizados.itertuples():
             appendTabelaAuxiliar(tabelaGalNaoRealizadosFalso, row, "Foi feito um exame posterior a esse")
             tabelaGalNaoRealizados.drop(row.Index, inplace=True)
             break
+        
+tabelaAssessorCids = pd.read_excel("assessor outros cids.xls", dtype={'CPF': np.unicode_, 'CNS': np.unicode_}).sort_values(by=["Cód. Paciente", "Data da Notificação"]) #Lê a tabela do Assessor e classifica por ID do paciente e Data da Notificação
+tabelaAssessorCids['CPF'], tabelaAssessorCids['CNS'] = formataCpfCns(tabelaAssessorCids['CPF'], tabelaAssessorCids['CNS']) #Formata as colunas de CPF e CNS baseado na regra de negócio
+tabelaAssessorCids = limpaAcentosAssessor(tabelaAssessorCids) #Limpa acentos e 'ç' da tabela do Assessor
+filtroCid1 = tabelaAssessorCids["Agravo (CID)"] != "J111"
+filtroCid2 = tabelaAssessorCids["Agravo (CID)"] != "B342"
+tabelaAssessorCids = tabelaAssessorCids.where(filtroCid1 & filtroCid2).dropna(how='all')
+
+
+for row in tabelaGalPositivos.itertuples():
+    notifAssessorCids = acharId(row.CPF, row.CNS, tabelaAssessorCids)
+    
+    if notifAssessorCids is None or notifAssessorCids.empty:
+        continue
+    
+    if "SUSPEITA" in notifAssessorCids['SituaCAo'].values or "CONFIRMADO" in notifAssessorCids['SituaCAo'].values:
+        for rowAssessor in notifAssessorCids.itertuples():
+            if (rowAssessor.SituaCAo == "SUSPEITA" or rowAssessor.SituaCAo == "CONFIRMADO") and rowAssessor[paramColunaDataNotifAssessor] >= row[paramColunaDataCadGal] - timedelta(days=paramDiasOutroCid):
+                appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Positivo no GAL, " + rowAssessor.SituaCAo.capitalize() + " no Assessor com CID errado dentro do período: " + rowAssessor[paramColunaCidAssessor])
+                break
+
+for row in tabelaGalNegativos.itertuples():
+    notifAssessorCids = acharId(row.CPF, row.CNS, tabelaAssessorCids)
+    
+    if notifAssessorCids is None or notifAssessorCids.empty:
+        continue
+    
+    if "SUSPEITA" in notifAssessorCids['SituaCAo'].values or "NEGATIVO" in notifAssessorCids['SituaCAo'].values:
+        for rowAssessor in notifAssessorCids.itertuples():
+            if (rowAssessor.SituaCAo == "SUSPEITA" or rowAssessor.SituaCAo == "NEGATIVO") and rowAssessor[paramColunaDataNotifAssessor] >= row[paramColunaDataCadGal] - timedelta(days=paramDiasOutroCid):
+                appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Negativo no GAL, " + rowAssessor.SituaCAo.capitalize() + " no Assessor com CID errado dentro do período: " + rowAssessor[paramColunaCidAssessor])
+                break
+    
+for row in tabelaGalSuspeitos.itertuples():
+    notifAssessorCids = acharId(row.CPF, row.CNS, tabelaAssessorCids)
+    
+    if notifAssessorCids is None or notifAssessorCids.empty:
+        continue
+    
+    if "SUSPEITA" in notifAssessorCids['SituaCAo'].values:
+        for rowAssessor in notifAssessorCids.itertuples():
+            if rowAssessor.SituaCAo == "SUSPEITA" and rowAssessor[paramColunaDataNotifAssessor] >= row[paramColunaDataCadGal] - timedelta(days=paramDiasOutroCid):
+                appendTabelaAuxiliar(tabelaGalInconsistencias, row, "Suspeito no GAL, " + rowAssessor.SituaCAo.capitalize() + " no Assessor com CID errado dentro do período: " + rowAssessor[paramColunaCidAssessor])
+                break
 
 baseRepeticaoSemId = pd.DataFrame(baseRepeticaoSemId)
 if tabelaRepeticaoSemDados is None:
